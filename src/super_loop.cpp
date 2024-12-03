@@ -1,31 +1,52 @@
 /*
-  Super Loop (Bare-Bones) Implementation for ESP32
-  - Control Task: Time-critical, fast execution
-  - Communication Task: Blocking, non-time-critical execution
+  Super Loop Implementation for ESP32
+  - Control Task: Time-critical, triggered every 10 ms
+  - Communication Task: Non-critical, triggered every 50 ms
   - GPIO Toggling: Marks the start and end of each task for oscilloscope monitoring
 */
+
 #include <Arduino.h>
 
 // Define GPIO pins for task indicators
 const int CONTROL_PIN = 2;    // GPIO 2 for Control Task
 const int COMM_PIN = 4;       // GPIO 4 for Communication Task
 
-// Define task periods in milliseconds (modifiable for testing)
-const unsigned long CONTROL_TASK_PERIOD = 10;      // Control Task period (e.g., 10 ms)
-const unsigned long COMM_TASK_PERIOD = 50;         // Communication Task period (e.g., 50 ms)
+// Define task periods in milliseconds
+const unsigned long CONTROL_TASK_PERIOD_MS = 10;    // Control Task period (10 ms)
+const unsigned long COMM_TASK_PERIOD_MS = 50;       // Communication Task period (50 ms)
 
-// Variables to track task execution timing
+// Control Task Duration
+const unsigned long CONTROL_TASK_DURATION_MS = 2;    // Simulated Control Task duration (2 ms)
+
+// Communication Task Duration
+const unsigned long COMM_TASK_DURATION_MS = 20;      // Communication Task duration (20 ms)
+
+// Communication Task Loop Count
+// Based on empirical testing: 40,000 iterations ≈ 1 ms
+// Therefore, for 20 ms: 40,000 * 20 = 800,000 iterations
+const unsigned long COMM_LOOP_COUNT = COMM_TASK_DURATION_MS * 40000; // 20 ms * 40,000 iterations/ms = 800,000
+
+// Control Task Loop Count
+// Based on empirical testing: 40,000 iterations ≈ 1 ms
+// Therefore, for 2 ms: 40,000 * 2 = 80,000 iterations
+const unsigned long CONTROL_LOOP_COUNT = CONTROL_TASK_DURATION_MS * 40000; // 2 ms * 40,000 iterations/ms = 80,000
+
+// Variables to track task timing
+unsigned long previousControlMillis = 0;
 unsigned long previousCommMillis = 0;
+
+// Flag to indicate Communication Task is running (optional, for synchronization if needed)
+bool commTaskRunning = false;
 
 // Function Prototypes
 void initializeControl();
 void initializeCommunication();
-void executeControlTask();
-void executeCommunicationTask();
 void performControlOperations();
 void performCommunication();
 
 void setup() {
+  setCpuFrequencyMhz(240);
+
   // Initialize serial communication for debugging (optional)
   Serial.begin(115200);
   while (!Serial) {
@@ -43,19 +64,36 @@ void setup() {
   initializeControl();
   initializeCommunication();
 
-  Serial.println("Super Loop (Bare-Bones) Implementation Started");
+  Serial.println("Super Loop Implementation Started");
 }
 
 void loop() {
   unsigned long currentMillis = millis();
 
-  // Execute Control Task at defined period
-  executeControlTask();
+  // Check if it's time to execute the Control Task
+  if (currentMillis - previousControlMillis >= CONTROL_TASK_PERIOD_MS) {
+    previousControlMillis = currentMillis;
 
-  // Execute Communication Task at defined period
-  if (currentMillis - previousCommMillis >= COMM_TASK_PERIOD) {
+    // Execute Control Task
+    digitalWrite(CONTROL_PIN, HIGH);
+    performControlOperations();
+    digitalWrite(CONTROL_PIN, LOW);
+  }
+
+  // Check if it's time to execute the Communication Task
+  if (currentMillis - previousCommMillis >= COMM_TASK_PERIOD_MS) {
     previousCommMillis = currentMillis;
-    executeCommunicationTask();
+    commTaskRunning = true;
+
+    // Start Communication Task
+    digitalWrite(COMM_PIN, HIGH);
+
+    // Perform Communication Task operations
+    performCommunication();
+
+    // End Communication Task
+    digitalWrite(COMM_PIN, LOW);
+    commTaskRunning = false;
   }
 
   // (Optional) Other non-blocking operations can be added here
@@ -82,52 +120,28 @@ void initializeCommunication() {
 }
 
 /*
-  Function: executeControlTask
-  Description: Simulates a time-critical control task by toggling CONTROL_PIN.
-*/
-void executeControlTask() {
-  // Mark the start of the Control Task
-  digitalWrite(CONTROL_PIN, HIGH);
-  
-  // Perform Control Task operations (simulated with a short delay)
-  // In a real application, replace this with actual control logic.
-  performControlOperations();
-
-  // Mark the end of the Control Task
-  digitalWrite(CONTROL_PIN, LOW);
-}
-
-/*
-  Function: executeCommunicationTask
-  Description: Simulates a blocking communication task by toggling COMM_PIN.
-*/
-void executeCommunicationTask() {
-  // Mark the start of the Communication Task
-  digitalWrite(COMM_PIN, HIGH);
-
-  // Perform Communication Task operations (simulated with a longer delay)
-  // In a real application, replace this with actual communication logic.
-  performCommunication();
-
-  // Mark the end of the Communication Task
-  digitalWrite(COMM_PIN, LOW);
-}
-
-/*
   Function: performControlOperations
-  Description: Placeholder for control task operations.
+  Description: Simulates the Control Task operations by executing a calibrated for-loop.
 */
 void performControlOperations() {
-  // Simulate a fast control task (e.g., 1 ms)
-  // Use delayMicroseconds for more precise timing if needed
-  delayMicroseconds(1000); // 1 ms
+  // Simulate a fast control task (e.g., 2 ms)
+  // Use a calibrated for-loop based on empirical testing
+
+  for (unsigned long i = 0; i < CONTROL_LOOP_COUNT; i++) {
+    // Simulate a minimal operation to prevent compiler optimization
+    asm("nop");
+  }
 }
 
 /*
   Function: performCommunication
-  Description: Placeholder for communication task operations.
+  Description: Simulates the Communication Task operations by executing a calibrated for-loop.
 */
 void performCommunication() {
-  // Simulate a blocking communication task (e.g., 10 ms)
-  delay(10); // 10 ms
+  // Simulate a communication task operation using a calibrated for-loop
+
+  for (unsigned long i = 0; i < 960000; i++) {
+    // Simulate a minimal operation to prevent compiler optimization
+    asm("nop");
+  }
 }

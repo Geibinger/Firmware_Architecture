@@ -1,11 +1,11 @@
 /*
-  FreeRTOS-Based Implementation for ESP32
+  Enhanced FreeRTOS-Based Implementation for ESP32
   - Control Task: Time-critical, high-priority FreeRTOS task
   - Communication Task: Non-critical, lower-priority FreeRTOS task
   - GPIO Toggling: Marks the start and end of each task for oscilloscope monitoring
+  - Boolean Flag: Indicates if Communication Task is running to manage COMM_PIN state
 */
 
-// Include FreeRTOS library (already included in ESP32 Arduino core)
 #include <Arduino.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -14,9 +14,21 @@
 const int CONTROL_PIN = 2;    // GPIO 2 for Control Task
 const int COMM_PIN = 4;       // GPIO 4 for Communication Task
 
-// Define task periods in milliseconds (modifiable for testing)
-const unsigned long CONTROL_TASK_PERIOD_MS = 10;      // Control Task period (e.g., 10 ms)
-const unsigned long COMM_TASK_PERIOD_MS = 50;         // Communication Task period (e.g., 50 ms)
+// Define task periods in milliseconds
+const unsigned long CONTROL_TASK_PERIOD_MS = 10;    // Control Task period (10 ms)
+const unsigned long COMM_TASK_PERIOD_MS = 50;       // Communication Task period (50 ms)
+
+// Control Task Duration
+const unsigned long CONTROL_TASK_DURATION_MS = 2;    // Simulated Control Task duration (2 ms)
+
+// Communication Task Duration
+const unsigned long COMM_TASK_DURATION_MS = 20;      // Communication Task duration (20 ms)
+
+// Communication Task Loop Count
+const unsigned long COMM_LOOP_COUNT = COMM_TASK_DURATION_MS * 40000; // 20 ms * 40,000 iterations/ms = 800,000
+
+// Control Task Loop Count
+const unsigned long CONTROL_LOOP_COUNT = CONTROL_TASK_DURATION_MS * 40000; // 2 ms * 40,000 iterations/ms = 80,000
 
 // Task Handles (optional, for monitoring or future enhancements)
 TaskHandle_t controlTaskHandle = NULL;
@@ -26,8 +38,9 @@ TaskHandle_t commTaskHandle = NULL;
 void controlTask(void *pvParameters);
 void commTask(void *pvParameters);
 void initializePeripherals();
-void performControlOperations();
-void performCommunication();
+
+// Volatile boolean indicating if Communication Task is running
+volatile bool commTaskRunning = false;
 
 void setup() {
   // Initialize serial communication for debugging (optional)
@@ -51,7 +64,7 @@ void setup() {
   xTaskCreate(
     controlTask,                // Function that implements the task
     "Control Task",             // Text name for the task
-    2048,                       // Stack size in words, not bytes
+    2048,                       // Stack size in words (~8 KB)
     NULL,                       // Parameter passed into the task
     2,                          // Priority at which the task is created
     &controlTaskHandle          // Pointer to the task handle
@@ -60,14 +73,12 @@ void setup() {
   xTaskCreate(
     commTask,                   // Function that implements the task
     "Communication Task",       // Text name for the task
-    2048,                       // Stack size in words, not bytes
+    4096,                       // Stack size in words (~16 KB) - increased for longer loop
     NULL,                       // Parameter passed into the task
     1,                          // Priority at which the task is created
     &commTaskHandle             // Pointer to the task handle
   );
 
-  // Start the FreeRTOS scheduler (automatically called in Arduino)
-  // No need to call vTaskStartScheduler() in Arduino framework
   Serial.println("FreeRTOS-Based Implementation Started");
 }
 
@@ -93,18 +104,34 @@ void controlTask(void *pvParameters) {
   // Cast parameters if needed
   (void) pvParameters;
 
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+
   while (1) {
+    // Check if Communication Task is running
+    if (commTaskRunning) {
+      // Set COMM_PIN low to indicate Control Task is using processing power
+      digitalWrite(COMM_PIN, LOW);
+    }
+
     // Mark the start of the Control Task
     digitalWrite(CONTROL_PIN, HIGH);
 
-    // Perform Control Task operations (simulated with a short delay)
-    performControlOperations();
+    // Perform Control Task operations (simulated with a calibrated for-loop)
+    for (unsigned long i = 0; i < CONTROL_LOOP_COUNT; i++) {
+      // Simulate a minimal operation to prevent compiler optimization
+      asm("nop");
+    }
 
     // Mark the end of the Control Task
     digitalWrite(CONTROL_PIN, LOW);
 
+    if (commTaskRunning) {
+      // Restore COMM_PIN high if Communication Task is still running
+      digitalWrite(COMM_PIN, HIGH);
+    }
+
     // Delay to maintain task period
-    vTaskDelay(pdMS_TO_TICKS(CONTROL_TASK_PERIOD_MS));
+    vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(CONTROL_TASK_PERIOD_MS));
   }
 }
 
@@ -116,36 +143,24 @@ void commTask(void *pvParameters) {
   // Cast parameters if needed
   (void) pvParameters;
 
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+
   while (1) {
     // Mark the start of the Communication Task
+    commTaskRunning = true;
     digitalWrite(COMM_PIN, HIGH);
 
-    // Perform Communication Task operations (simulated with a blocking delay)
-    performCommunication();
+    // Perform Communication Task operations (simulated with a calibrated for-loop)
+    for (unsigned long i = 0; i < COMM_LOOP_COUNT; i++) {
+      // Simulate a minimal operation to prevent compiler optimization
+      asm("nop");
+    }
 
     // Mark the end of the Communication Task
     digitalWrite(COMM_PIN, LOW);
+    commTaskRunning = false;
 
     // Delay to maintain task period
-    vTaskDelay(pdMS_TO_TICKS(COMM_TASK_PERIOD_MS));
+    vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(COMM_TASK_PERIOD_MS));
   }
-}
-
-/*
-  Function: performControlOperations
-  Description: Simulates control task operations.
-*/
-void performControlOperations() {
-  // Simulate a fast control task (e.g., 1 ms)
-  // For more precise timing, use delayMicroseconds() if necessary
-  delayMicroseconds(1000); // 1 ms
-}
-
-/*
-  Function: performCommunication
-  Description: Simulates communication task operations.
-*/
-void performCommunication() {
-  // Simulate a blocking communication task (e.g., 10 ms)
-  delay(10); // 10 ms
 }
